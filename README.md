@@ -17,12 +17,17 @@ This script requires PowerShell 7 to run correctly.
 * `-InputFile` (string, Mandatory): The path to the encrypted ColorNote backup file.
 * `-OutputFile` (string, Mandatory): The path where the decrypted JSON content will be saved.
 * `-Offset` (int, Optional): The number of bytes to skip at the beginning of the input file before decryption begins. Defaults to `28`.
+* `-Password` (string, Optional): The backup password. If omitted, the script prompts for a password and defaults to `"0000"` when the prompt is left empty.
 * `-JexOutputFile` (string, Optional): The path where the decrypted content will be saved as a Joplin Export (JEX) file.
 
 ## Example Usage
 
 ```powershell
 .\Decrypt-ColorNoteBackup.ps1 -InputFile .\my_backup.db -OutputFile .\decrypted_notes.json -JexOutputFile .\colornote_export.jex
+```
+
+```powershell
+.\Decrypt-ColorNoteBackup.ps1 -InputFile .\my_backup.db -OutputFile .\decrypted_notes.json -Password "1234"
 ```
 
 ## Acknowledgements
