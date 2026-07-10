@@ -10,6 +10,8 @@
     The path where the decrypted content will be saved (in JSON format).
 .PARAMETER Offset
     The number of bytes to skip at the beginning of the input file before decryption begins. Defaults to 28.
+.PARAMETER Password
+    The backup password. If omitted, the script prompts for a password and defaults to "0000" when the prompt is left empty.
 .PARAMETER JexOutputFile
     The path where the decrypted content will be saved as a Joplin Export (JEX) file.
 .EXAMPLE
@@ -24,6 +26,8 @@ param(
 
     [int]$Offset = 28,
 
+    [string]$Password,
+
     [string]$JexOutputFile # New parameter for JEX output
 )
 
@@ -37,20 +41,16 @@ function Get-OpenSslDerivedBytes {
     $md5 = [System.Security.Cryptography.MD5]::Create()
 
     # The key derivation mimics OpenSSL's EVP_BytesToKey function.
-    # First hash provides the key.
+    # ColorNote's BouncyCastle PBEWITHMD5AND128BITAES-CBC-OPENSSL path uses
+    # the first OpenSSL MD5 digest as the AES-128 key.
     $combined1 = New-Object byte[] ($passwordBytes.Length + $Salt.Length)
     [System.Buffer]::BlockCopy($passwordBytes, 0, $combined1, 0, $passwordBytes.Length)
     [System.Buffer]::BlockCopy($Salt, 0, $combined1, $passwordBytes.Length, $Salt.Length)
     $key = $md5.ComputeHash($combined1)
 
-    # Second hash, using the result of the first, provides the IV.
-    # NOTE: This derived IV is known to be incorrect for this specific implementation,
-    # but we must provide one. The resulting garbage in the first block is handled later.
-    $combined2 = New-Object byte[] ($key.Length + $passwordBytes.Length + $Salt.Length)
-    [System.Buffer]::BlockCopy($key, 0, $combined2, 0, $key.Length)
-    [System.Buffer]::BlockCopy($passwordBytes, 0, $combined2, $key.Length, $passwordBytes.Length)
-    [System.Buffer]::BlockCopy($Salt, 0, $combined2, ($key.Length + $passwordBytes.Length), $Salt.Length)
-    $iv = $md5.ComputeHash($combined2)
+    # BouncyCastle initializes this OpenSSL PBE cipher without an IV parameter,
+    # which is equivalent to a zero IV for this backup format.
+    $iv = New-Object byte[] 16
 
     $md5.Dispose()
 
@@ -72,15 +72,21 @@ try {
         throw "Input file not found: $InputFile"
     }
 
-    # Prompt for password
-    $securePassword = Read-Host -Prompt "Enter password (press Enter for default '0000')" -AsSecureString
-    if ($securePassword.Length -eq 0) {
-        $Password = "0000"
-    }
-    else {
-        $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
-        $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringUni($bstr)
-        [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+    # Prompt for password when it was not supplied as a parameter.
+    if ([string]::IsNullOrEmpty($Password)) {
+        $securePassword = Read-Host -Prompt "Enter password (press Enter for default '0000')" -AsSecureString
+        if ($securePassword.Length -eq 0) {
+            $Password = "0000"
+        }
+        else {
+            $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($securePassword)
+            try {
+                $Password = [System.Runtime.InteropServices.Marshal]::PtrToStringUni($bstr)
+            }
+            finally {
+                [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($bstr)
+            }
+        }
     }
 
     # The salt is a fixed string.
